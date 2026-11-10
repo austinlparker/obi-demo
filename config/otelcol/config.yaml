@@ -1,5 +1,11 @@
 # OTel Collector between OBI and the backends.
 # Traces go to Jaeger over OTLP/gRPC; metrics go to Prometheus' native OTLP endpoint.
+#
+# The spanmetrics connector also turns OBI's spans into latency histograms
+# with exemplars. OBI v1's own OTLP metrics carry no exemplars (its exemplar
+# filter only exists for its Prometheus exporter, and Config v2 can't set it),
+# so this is where trace-linked histograms come from. They're exponential
+# histograms, which Prometheus stores as native histograms.
 receivers:
   otlp:
     protocols:
@@ -14,6 +20,19 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 20
   batch: {}
+
+connectors:
+  spanmetrics:
+    histogram:
+      unit: s
+      exponential:
+        max_size: 160
+    exemplars:
+      enabled: true
+    dimensions:
+      - name: http.request.method
+      - name: http.response.status_code
+    metrics_flush_interval: 15s
 
 exporters:
   otlp/jaeger:
@@ -35,9 +54,9 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/jaeger]
+      exporters: [otlp/jaeger, spanmetrics]
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, spanmetrics]
       processors: [memory_limiter, batch]
       exporters: [otlphttp/prometheus]
   telemetry:

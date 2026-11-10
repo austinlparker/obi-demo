@@ -42,6 +42,10 @@ It runs on a Mac inside one Lima Linux VM.
   for Go, Java and Node.js are experimental in v1.
 - **Config v2.** `config/obi/obi.yaml` uses the new OBI Config v2 schema, in the
   OpenTelemetry declarative configuration shape, and passes `obi config validate`.
+- **Native histograms and exemplars.** The Collector's spanmetrics connector
+  turns OBI's spans into exponential histograms with exemplars. Prometheus stores
+  them as native histograms, and the Perses histograms dashboard shows a latency
+  heatmap and p95 lines whose exemplars carry the trace ID.
 - **Fault injection.** `make chaos-latency` and `make chaos-errors` let you break
   things live and watch it in Perses and Jaeger.
 
@@ -138,6 +142,21 @@ Everything Perses loads lives in `config/perses/provisioning/`:
   Jaeger UI at localhost:16686.
 - `dashboard-runtime-network.yaml`: Go, JVM and Node.js runtime metrics, network
   flows and TCP stats.
+- `dashboard-histograms.yaml`: latency heatmap, distribution and quantiles from
+  native histograms, and p95 per endpoint with exemplars. Hover an exemplar
+  diamond for its `trace_id` and paste it into Jaeger's trace ID search.
+
+### Where the exemplars come from
+
+OBI v1's OTLP metrics don't carry exemplars. Its `exemplar_filter` setting
+exists only for its Prometheus exporter, and the Config v2 schema rejects
+`meter_provider.exemplar_filter`. So the Collector's `spanmetrics` connector
+builds latency histograms from OBI's spans instead (exponential buckets,
+exemplars on), and Prometheus runs with `--enable-feature=exemplar-storage`.
+The Perses Prometheus datasource has `exemplars.enable: true`, so any time
+series panel draws exemplars when its series have them. Perses' heatmap and
+histogram panels only read native histograms, which is why these use the
+exponential span metrics rather than OBI's classic-bucket ones.
 
 Perses re-reads the folder every 30 seconds, so you can edit a dashboard file
 and refresh. Perses validates every panel against its plugin schemas on load.

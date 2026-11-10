@@ -141,6 +141,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yaml
       - --web.enable-otlp-receiver
       - --web.enable-lifecycle
+      - --enable-feature=exemplar-storage
     volumes:
       - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
     ports:

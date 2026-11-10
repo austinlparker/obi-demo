@@ -8,6 +8,10 @@
     plugin:
       kind: PrometheusDatasource
       spec:
+        # Ask Prometheus for exemplars alongside range queries, so time series
+        # panels can draw them (Prometheus runs with exemplar storage on).
+        exemplars:
+          enable: true
         proxy:
           kind: HTTPProxy
           spec:

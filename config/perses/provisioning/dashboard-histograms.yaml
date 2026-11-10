@@ -1,0 +1,210 @@
+# Perses dashboard as code. Perses loads everything in config/perses/provisioning at startup.
+kind: Dashboard
+metadata:
+  name: swagshop-histograms
+  project: swagshop
+spec:
+  display:
+    name: 'Swag shop: latency histograms and exemplars'
+    description: Native histograms with exemplars, built by the Collector from OBI's spans.
+  duration: 15m
+  refreshInterval: 15s
+  variables:
+  - kind: ListVariable
+    spec:
+      name: service
+      display:
+        name: Service
+      allowMultiple: false
+      allowAllValue: false
+      defaultValue: gateway
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: job
+          matchers:
+          - traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}
+  panels:
+    hx_intro:
+      kind: Panel
+      spec:
+        display:
+          name: Where these histograms come from
+        plugin:
+          kind: Markdown
+          spec:
+            text: |-
+              OBI sends every server span to the OTel Collector. The Collector's **spanmetrics** connector turns those spans into **exponential histograms with exemplars**, and Prometheus stores them as **native histograms**.
+
+              OBI v1's own OTLP metrics don't carry exemplars, so this is how latency gets linked to traces.
+
+              The diamonds on the p95 chart are exemplars. Hover one to see its `trace_id`, then paste it into the trace ID box at the top of [Jaeger](http://localhost:16686). Try `make chaos-latency` and watch the heatmap shift.
+    hx_p95:
+      kind: Panel
+      spec:
+        display:
+          name: p95 latency by endpoint, with exemplars
+          description: 'histogram_quantile over the span-metrics native histogram, one line per endpoint and status. Each diamond is an exemplar: one real request and its trace.'
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, rate(traces_span_metrics_duration_seconds{span_kind="SPAN_KIND_SERVER", job="$service"}[$__rate_interval]))
+                seriesNameFormat: '{{span_name}} ({{http_response_status_code}})'
+    hx_heat:
+      kind: Panel
+      spec:
+        display:
+          name: Latency heatmap
+          description: Every server request for the service over time, bucketed by duration (native histogram buckets, log2 scale).
+        plugin:
+          kind: HeatMapChart
+          spec:
+            yAxisFormat:
+              unit: seconds
+            logBase: 2
+            showVisualMap: true
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(traces_span_metrics_duration_seconds{span_kind="SPAN_KIND_SERVER", job="$service"}[$__rate_interval]))
+    hx_hist:
+      kind: Panel
+      spec:
+        display:
+          name: Latency distribution, last 5 minutes
+          description: The same native histogram as a distribution, summed over the last 5 minutes.
+        plugin:
+          kind: HistogramChart
+          spec:
+            format:
+              unit: seconds
+            logBase: 2
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(increase(traces_span_metrics_duration_seconds{span_kind="SPAN_KIND_SERVER", job="$service"}[5m]))
+    hx_quant:
+      kind: Panel
+      spec:
+        display:
+          name: p50, p95 and p99
+          description: Quantiles for the whole service from the summed native histogram.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.5, sum(rate(traces_span_metrics_duration_seconds{span_kind="SPAN_KIND_SERVER", job="$service"}[$__rate_interval])))
+                seriesNameFormat: p50
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum(rate(traces_span_metrics_duration_seconds{span_kind="SPAN_KIND_SERVER", job="$service"}[$__rate_interval])))
+                seriesNameFormat: p95
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_seconds{span_kind="SPAN_KIND_SERVER", job="$service"}[$__rate_interval])))
+                seriesNameFormat: p99
+    hx_rate:
+      kind: Panel
+      spec:
+        display:
+          name: Requests per second by endpoint
+          description: histogram_count of the span-metrics histogram.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: requests/sec
+            visual:
+              stack: all
+              areaOpacity: 0.3
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (span_name) (histogram_count(rate(traces_span_metrics_duration_seconds{span_kind="SPAN_KIND_SERVER", job="$service"}[$__rate_interval])))
+                seriesNameFormat: '{{span_name}}'
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: Latency
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 8
+        height: 9
+        content:
+          $ref: '#/spec/panels/hx_intro'
+      - x: 8
+        y: 0
+        width: 16
+        height: 9
+        content:
+          $ref: '#/spec/panels/hx_p95'
+      - x: 0
+        y: 9
+        width: 16
+        height: 9
+        content:
+          $ref: '#/spec/panels/hx_heat'
+      - x: 16
+        y: 9
+        width: 8
+        height: 9
+        content:
+          $ref: '#/spec/panels/hx_hist'
+      - x: 0
+        y: 18
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/hx_quant'
+      - x: 12
+        y: 18
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/hx_rate'
