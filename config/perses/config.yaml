@@ -1,0 +1,12 @@
+# Perses server config for the demo: no auth, dashboards provisioned from files.
+security:
+  readonly: false
+  enable_auth: false
+database:
+  file:
+    folder: /perses
+    extension: json
+provisioning:
+  folders:
+    - /etc/perses/provisioning
+  interval: 30s

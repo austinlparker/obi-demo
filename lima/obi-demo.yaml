@@ -1,0 +1,69 @@
+# Lima VM for the OBI demo.
+#
+# OBI is Linux-only eBPF, so on macOS everything runs in one Linux VM:
+# Apple's Virtualization framework (vmType: vz) boots Ubuntu 24.04, whose
+# kernel ships BTF, and rootful Docker Engine runs the containers inside it.
+# One VM matters: OBI has to share a kernel with the processes it instruments.
+#
+#   limactl start --name=obi-demo ./lima/obi-demo.yaml    (or: make vm)
+
+minimumLimaVersion: "1.0.0"
+
+vmType: vz
+# Rosetta is not needed: every image in the demo is multi-arch.
+cpus: 4
+memory: 8GiB
+disk: 40GiB
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: aarch64
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: x86_64
+
+# Your home directory, read-only, at the same path inside the VM, so
+# `docker compose` in the VM can read this repo where you cloned it.
+mounts:
+  - location: "~"
+    writable: false
+mountType: virtiofs
+
+# Lima's bundled containerd/nerdctl is rootless; OBI needs rootful, so use
+# Docker Engine instead.
+containerd:
+  system: false
+  user: false
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if ! command -v docker >/dev/null 2>&1; then
+        export DEBIAN_FRONTEND=noninteractive
+        curl -fsSL https://get.docker.com | sh
+      fi
+      usermod -aG docker "{{.User}}"
+      systemctl enable --now docker
+      # tracefs and debugfs are normally mounted on Ubuntu; make sure.
+      mountpoint -q /sys/kernel/tracing || mount -t tracefs nodev /sys/kernel/tracing
+      mountpoint -q /sys/kernel/debug || mount -t debugfs nodev /sys/kernel/debug
+
+probes:
+  - script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if ! timeout 300s bash -c "until sudo docker info >/dev/null 2>&1; do sleep 3; done"; then
+        echo >&2 "docker is not running yet"
+        exit 1
+      fi
+      test -e /sys/kernel/btf/vmlinux
+    hint: See "/var/log/cloud-init-output.log" in the guest.
+
+# Lima forwards ports that containers publish in the VM to localhost on the Mac:
+#   8080 shop, 8090 Perses, 16686 Jaeger, 9090 Prometheus.
+# The Collector's OTLP ports are VM-local and are not forwarded.
+portForwards:
+  - guestIP: "127.0.0.1"
+    guestPortRange: [4317, 4318]
+    ignore: true

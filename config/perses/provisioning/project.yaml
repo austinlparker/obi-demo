@@ -1,0 +1,6 @@
+kind: Project
+metadata:
+  name: swagshop
+spec:
+  display:
+    name: Swag shop

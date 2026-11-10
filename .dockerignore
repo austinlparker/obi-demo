@@ -1,0 +1,6 @@
+services/*/target/
+services/*/node_modules/
+.git/
+loadgen/
+config/
+lima/

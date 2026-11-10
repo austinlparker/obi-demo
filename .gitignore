@@ -1,0 +1,6 @@
+services/checkout/target/
+services/notifier/target/
+services/cart/node_modules/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,163 @@
+# OBI demo: a five-language swag shop instrumented only by OBI.
+# Run inside the Lima VM (see README). Needs a Linux kernel with BTF.
+name: obi-demo
+
+x-app-defaults: &app
+  restart: unless-stopped
+  networks: [shop]
+
+services:
+  # --- the shop --------------------------------------------------------------
+  gateway:
+    <<: *app
+    build: ./services/gateway
+    environment:
+      OTEL_SERVICE_NAME: gateway
+      CATALOG_URL: http://catalog:8000
+      CART_URL: http://cart:3000
+      CHECKOUT_ADDR: checkout:50051
+    ports:
+      - "8080:8088"
+    depends_on: [catalog, cart, checkout]
+
+  catalog:
+    <<: *app
+    build: ./services/catalog
+    environment:
+      OTEL_SERVICE_NAME: catalog
+      DATABASE_URL: postgresql://shop:shop@postgres:5432/shop
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  cart:
+    <<: *app
+    build: ./services/cart
+    environment:
+      OTEL_SERVICE_NAME: cart
+      REDIS_URL: redis://redis:6379
+    depends_on: [redis]
+
+  checkout:
+    <<: *app
+    build:
+      context: .
+      dockerfile: services/checkout/Dockerfile
+    environment:
+      OTEL_SERVICE_NAME: checkout
+      NATS_URL: nats://nats:4222
+      CHECKOUT_DECLINE_RATE: "0.03"
+    depends_on: [nats]
+
+  notifier:
+    <<: *app
+    build: ./services/notifier
+    environment:
+      OTEL_SERVICE_NAME: notifier
+      NATS_URL: nats://nats:4222
+      CATALOG_URL: http://catalog:8000
+    depends_on: [nats, catalog]
+
+  postgres:
+    <<: *app
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop
+      POSTGRES_DB: shop
+    volumes:
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    <<: *app
+    image: redis:8.8-alpine
+
+  nats:
+    <<: *app
+    image: nats:2.15-alpine
+
+  loadgen:
+    <<: *app
+    image: grafana/k6:2.3.0
+    command: ["run", "--quiet", "/scripts/shop.js"]
+    environment:
+      GATEWAY_URL: http://gateway:8088
+      RATE: "8"
+    volumes:
+      - ./loadgen:/scripts:ro
+    depends_on: [gateway]
+
+  # --- OBI ---------------------------------------------------------------------
+  obi:
+    image: otel/ebpf-instrument:v1.0.0
+    restart: unless-stopped
+    command: ["--config=/etc/obi/obi.yaml"]
+    # OBI needs to see every process on the VM (host PID namespace) and every
+    # network interface (host network) to instrument the containers above.
+    pid: host
+    network_mode: host
+    # Simplest option for a demo. config/obi/obi.yaml lists the narrower
+    # capability set if you want to drop privileged.
+    privileged: true
+    volumes:
+      - ./config/obi/obi.yaml:/etc/obi/obi.yaml:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup          # new sockets, for context propagation
+      - /sys/kernel/tracing:/sys/kernel/tracing # required on newer kernels for propagation
+      - /sys/kernel/security:/sys/kernel/security:ro # Go library-level propagation checks lockdown
+    depends_on: [otelcol]
+
+  # --- telemetry pipeline and backends ----------------------------------------
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.165.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/otelcol/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      # Published on the VM's loopback only, for OBI on the host network.
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    networks: [shop]
+    depends_on: [jaeger, prometheus]
+
+  jaeger:
+    # 2.20.0 is the newest Jaeger that still serves the /api/traces endpoints
+    # that Perses' Jaeger plugin (0.2.x) queries. 2.21+ only serve /api/v3.
+    image: jaegertracing/jaeger:2.20.0
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+    networks: [shop]
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --web.enable-otlp-receiver
+      - --web.enable-lifecycle
+    volumes:
+      - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+    ports:
+      - "9090:9090"
+    networks: [shop]
+
+  perses:
+    image: persesdev/perses:v0.55.1
+    restart: unless-stopped
+    command: ["--config=/etc/perses/config.yaml"]
+    volumes:
+      - ./config/perses/config.yaml:/etc/perses/config.yaml:ro
+      - ./config/perses/provisioning:/etc/perses/provisioning:ro
+    ports:
+      - "8090:8080"
+    networks: [shop]
+    depends_on: [prometheus, jaeger]
+
+networks:
+  shop: {}

@@ -1,0 +1,22 @@
+# Prometheus receives OBI's metrics over OTLP from the Collector
+# (started with --web.enable-otlp-receiver). service.name becomes the job label.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+otlp:
+  # Keep a few resource attributes as labels instead of only on target_info.
+  promote_resource_attributes:
+    - service.instance.id
+    - telemetry.sdk.language
+    - host.name
+
+storage:
+  tsdb:
+    # OTLP pushes can arrive slightly out of order.
+    out_of_order_time_window: 30m
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

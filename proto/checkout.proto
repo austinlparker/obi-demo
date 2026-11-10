@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package swagshop.checkout.v1;
+
+option go_package = "github.com/austinlparker/obi-demo/services/gateway/gen/checkoutv1;checkoutv1";
+option java_multiple_files = true;
+option java_package = "io.swagshop.checkout.v1";
+
+// CheckoutService places an order for the items in a user's cart.
+service CheckoutService {
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+}
+
+message LineItem {
+  string sku = 1;
+  int32 quantity = 2;
+  int64 unit_price_cents = 3;
+}
+
+message PlaceOrderRequest {
+  string user_id = 1;
+  repeated LineItem items = 2;
+}
+
+message PlaceOrderResponse {
+  string order_id = 1;
+  int64 total_cents = 2;
+}

@@ -1,0 +1,120 @@
+# OBI v1 configuration (Config v2 schema, OpenTelemetry declarative config shape).
+# Validate with:  make validate
+#   (runs: obi config validate /path/to/obi.yaml in the otel/ebpf-instrument:v1.0.0 image)
+#
+# docker-compose.yaml runs OBI privileged for simplicity. To drop privileged,
+# OBI's security docs list what this config needs:
+#   application observability: CAP_BPF CAP_PERFMON CAP_DAC_READ_SEARCH
+#                              CAP_CHECKPOINT_RESTORE CAP_NET_RAW CAP_SYS_PTRACE
+#   context propagation:       + CAP_NET_ADMIN, and CAP_SYS_ADMIN for Go
+#                              library-level propagation
+#   network flow metrics:      CAP_BPF CAP_NET_RAW (socket filter)
+file_format: "1.0"
+log_level: info
+
+# Where OBI sends telemetry. OBI runs on the VM's host network, so the
+# Collector is reached on the port it publishes on the VM's loopback.
+meter_provider:
+  readers:
+    - periodic:
+        interval: 15000
+        exporter:
+          otlp_http:
+            endpoint: http://127.0.0.1:4318/v1/metrics
+            default_histogram_aggregation: explicit_bucket_histogram
+tracer_provider:
+  processors:
+    - batch:
+        schedule_delay: 1000
+        exporter:
+          otlp_http:
+            endpoint: http://127.0.0.1:4318/v1/traces
+
+extensions:
+  obi:
+    version: "2.0"
+
+    # Which processes to instrument. Only the swag shop's own services are
+    # selected, by the port each one listens on. Everything else on the VM
+    # (Postgres, Redis, NATS, the Collector, Jaeger, Prometheus, Perses, k6)
+    # is left alone, but still shows up as the far end of client spans.
+    capture:
+      policy:
+        default_action: exclude
+        match_order: first_match_wins
+      rules:
+        - action: include
+          name: gateway
+          description: Go API gateway
+          match:
+            process:
+              open_ports: "8088"
+        - action: include
+          name: catalog
+          description: Python FastAPI catalog
+          match:
+            process:
+              open_ports: "8000"
+        - action: include
+          name: cart
+          description: Node.js cart
+          match:
+            process:
+              open_ports: "3000"
+        - action: include
+          name: checkout
+          description: Java gRPC checkout
+          match:
+            process:
+              open_ports: "50051"
+        - action: include
+          name: notifier
+          description: Rust NATS consumer
+          match:
+            process:
+              open_ports: "7070"
+
+      instrumentation:
+        http:
+          routes:
+            incoming:
+              unmatched: heuristic
+              patterns:
+                - /api/products/{sku}
+                - /api/cart/{user}
+                - /api/cart/{user}/items
+                - /api/checkout/{user}
+                - /admin/chaos/{service}
+                - /products/{sku}
+                - /products/{sku}/sold
+                - /cart/{user}
+                - /cart/{user}/items
+            outgoing:
+              unmatched: heuristic
+              patterns:
+                - /products/{sku}
+                - /products/{sku}/sold
+                - /cart/{user}
+                - /cart/{user}/items
+                - /admin/chaos
+
+      # Network flow and TCP stats metrics, captured on the VM's interfaces.
+      network:
+        capture:
+          enabled: true
+        stats:
+          enabled: true
+
+      metrics:
+        features:
+          - application              # RED metrics for HTTP, gRPC, SQL, Redis, NATS
+          - application_service_graph
+          - application_runtime      # experimental: Go, Java, Node.js runtime metrics
+          - network
+          - stats
+
+      # W3C traceparent propagation for HTTP/1, plaintext HTTP/2 and gRPC,
+      # plus Go library-level propagation (needs privileged / CAP_SYS_ADMIN).
+      engine:
+        propagation:
+          context_propagation: all

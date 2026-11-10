@@ -1,0 +1,507 @@
+# Perses dashboard as code. Perses loads everything in config/perses/provisioning at startup.
+kind: Dashboard
+metadata:
+  name: swagshop-services
+  project: swagshop
+spec:
+  display:
+    name: 'Swag shop: services'
+    description: RED metrics, dependencies, service graph and traces for the swag shop, all from OBI.
+  duration: 15m
+  refreshInterval: 15s
+  variables:
+  - kind: ListVariable
+    spec:
+      name: service
+      display:
+        name: Service
+      allowMultiple: false
+      allowAllValue: false
+      defaultValue: gateway
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: job
+          matchers:
+          - '{__name__=~"http_server_request_duration_seconds_count|rpc_server_call_duration_seconds_count"}'
+  panels:
+    intro:
+      kind: Panel
+      spec:
+        display:
+          name: What you're looking at
+        plugin:
+          kind: Markdown
+          spec:
+            text: |-
+              Every number on this page comes from **OBI** (OpenTelemetry eBPF Instrumentation) v1.0.0. None of the five services (Go, Python, Node.js, Java, Rust) has an OpenTelemetry SDK or agent.
+
+              OBI → OTel Collector → Prometheus (metrics) and Jaeger (traces).
+
+              Open Jaeger at [localhost:16686](http://localhost:16686). Inject faults with `make chaos-latency`, `make chaos-errors`, `make chaos-off`.
+    total_rps:
+      kind: Panel
+      spec:
+        display:
+          name: Requests per second
+          description: Server requests per second across all services (HTTP and gRPC).
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: requests/sec
+            sparkline: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: (sum(rate(http_server_request_duration_seconds_count[$__rate_interval])) or vector(0)) + (sum(rate(rpc_server_call_duration_seconds_count[$__rate_interval])) or vector(0))
+    total_err:
+      kind: Panel
+      spec:
+        display:
+          name: Error ratio
+          description: Share of server requests that returned HTTP 5xx or a non-OK gRPC status.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: percent-decimal
+            sparkline: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: ((sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[$__rate_interval])) or vector(0)) + (sum(rate(rpc_server_call_duration_seconds_count{rpc_grpc_status_code!="0"}[$__rate_interval]))
+                  or vector(0))) / ((sum(rate(http_server_request_duration_seconds_count[$__rate_interval])) or vector(0)) + (sum(rate(rpc_server_call_duration_seconds_count[$__rate_interval])) or vector(0)))
+    edge_p95:
+      kind: Panel
+      spec:
+        display:
+          name: Gateway p95
+          description: 95th percentile latency of the public API, as the shop's users see it.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: seconds
+            sparkline: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="gateway"}[$__rate_interval])))
+    rps:
+      kind: Panel
+      spec:
+        display:
+          name: Request rate by service
+          description: Server-side requests per second, from http.server.request.duration and rpc.server.call.duration.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: requests/sec
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (job) (rate(http_server_request_duration_seconds_count[$__rate_interval])) or sum by (job) (rate(rpc_server_call_duration_seconds_count[$__rate_interval]))
+                seriesNameFormat: '{{job}}'
+    errors:
+      kind: Panel
+      spec:
+        display:
+          name: Error ratio by service
+          description: HTTP 5xx or non-OK gRPC status, as a share of each service's requests.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: percent-decimal
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: (sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[$__rate_interval])) or sum by (job) (rate(rpc_server_call_duration_seconds_count{rpc_grpc_status_code!="0"}[$__rate_interval])))
+                  / (sum by (job) (rate(http_server_request_duration_seconds_count[$__rate_interval])) or sum by (job) (rate(rpc_server_call_duration_seconds_count[$__rate_interval])))
+                seriesNameFormat: '{{job}}'
+    latency:
+      kind: Panel
+      spec:
+        display:
+          name: p95 latency by service
+          description: 95th percentile server latency.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le, job) (rate(http_server_request_duration_seconds_bucket[$__rate_interval]))) or histogram_quantile(0.95, sum by (le, job) (rate(rpc_server_call_duration_seconds_bucket[$__rate_interval])))
+                seriesNameFormat: '{{job}}'
+    route_latency:
+      kind: Panel
+      spec:
+        display:
+          name: p95 latency by route ($service)
+          description: OBI fills http.route from framework route discovery or the route patterns in config/obi/obi.yaml.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le, http_request_method, http_route) (rate(http_server_request_duration_seconds_bucket{job="$service"}[$__rate_interval])))
+                seriesNameFormat: '{{http_request_method}} {{http_route}}'
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le, rpc_method) (rate(rpc_server_call_duration_seconds_bucket{job="$service"}[$__rate_interval])))
+                seriesNameFormat: gRPC {{rpc_method}}
+    route_status:
+      kind: Panel
+      spec:
+        display:
+          name: Requests by route and status ($service)
+          description: Server requests per second, split by response status.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: requests/sec
+            visual:
+              stack: all
+              areaOpacity: 0.3
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{job="$service"}[$__rate_interval]))
+                seriesNameFormat: '{{http_route}} {{http_response_status_code}}'
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (rpc_method, rpc_grpc_status_code) (rate(rpc_server_call_duration_seconds_count{job="$service"}[$__rate_interval]))
+                seriesNameFormat: '{{rpc_method}} status {{rpc_grpc_status_code}}'
+    http_client:
+      kind: Panel
+      spec:
+        display:
+          name: Outgoing HTTP and gRPC p95
+          description: Client-side latency, measured in the calling process.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le, job, server_address) (rate(http_client_request_duration_seconds_bucket[$__rate_interval])))
+                seriesNameFormat: '{{job}} → {{server_address}}'
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le, job, server_address) (rate(rpc_client_call_duration_seconds_bucket[$__rate_interval])))
+                seriesNameFormat: '{{job}} → {{server_address}} (gRPC)'
+    db_client:
+      kind: Panel
+      spec:
+        display:
+          name: Database and cache calls p95
+          description: PostgreSQL calls from the catalog and Redis calls from the cart, parsed from the wire protocol.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le, job, db_system_name, db_operation_name) (rate(db_client_operation_duration_seconds_bucket[$__rate_interval])))
+                seriesNameFormat: '{{job}} {{db_system_name}} {{db_operation_name}}'
+    messaging:
+      kind: Panel
+      spec:
+        display:
+          name: NATS messages per second
+          description: Publishes from checkout and deliveries to the notifier.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: messages/sec
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (job, messaging_operation_name, messaging_destination_name) (rate(messaging_client_operation_duration_seconds_count[$__rate_interval]))
+                seriesNameFormat: '{{job}} {{messaging_operation_name}} {{messaging_destination_name}}'
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (job, messaging_destination_name) (rate(messaging_process_duration_seconds_count[$__rate_interval]))
+                seriesNameFormat: '{{job}} process {{messaging_destination_name}}'
+    graph_rps:
+      kind: Panel
+      spec:
+        display:
+          name: 'Service graph: calls per second'
+          description: One series per edge in the service graph that OBI builds from its spans.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: requests/sec
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (client, server) (rate(traces_service_graph_request_total[$__rate_interval]))
+                seriesNameFormat: '{{client}} → {{server}}'
+    graph_err:
+      kind: Panel
+      spec:
+        display:
+          name: 'Service graph: failed calls per second'
+          description: Failed calls per edge.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: requests/sec
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (client, server) (rate(traces_service_graph_request_failed_total[$__rate_interval]))
+                seriesNameFormat: '{{client}} → {{server}}'
+    traces:
+      kind: Panel
+      spec:
+        display:
+          name: Recent traces ($service)
+          description: Straight from Jaeger. Click a trace to open it.
+        plugin:
+          kind: TraceTable
+          spec: {}
+        queries:
+        - kind: TraceQuery
+          spec:
+            plugin:
+              kind: JaegerTraceQuery
+              spec:
+                service: $service
+                limit: 20
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: Golden signals
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 12
+        height: 6
+        content:
+          $ref: '#/spec/panels/intro'
+      - x: 12
+        y: 0
+        width: 4
+        height: 6
+        content:
+          $ref: '#/spec/panels/total_rps'
+      - x: 16
+        y: 0
+        width: 4
+        height: 6
+        content:
+          $ref: '#/spec/panels/total_err'
+      - x: 20
+        y: 0
+        width: 4
+        height: 6
+        content:
+          $ref: '#/spec/panels/edge_p95'
+      - x: 0
+        y: 6
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/rps'
+      - x: 8
+        y: 6
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/errors'
+      - x: 16
+        y: 6
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/latency'
+  - kind: Grid
+    spec:
+      display:
+        title: Routes
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/route_latency'
+      - x: 12
+        y: 0
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/route_status'
+  - kind: Grid
+    spec:
+      display:
+        title: Dependencies
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/http_client'
+      - x: 8
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/db_client'
+      - x: 16
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/messaging'
+  - kind: Grid
+    spec:
+      display:
+        title: Service graph
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/graph_rps'
+      - x: 12
+        y: 0
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/graph_err'
+  - kind: Grid
+    spec:
+      display:
+        title: Traces
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 24
+        height: 10
+        content:
+          $ref: '#/spec/panels/traces'

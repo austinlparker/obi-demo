@@ -1,0 +1,285 @@
+# Perses dashboard as code. Perses loads everything in config/perses/provisioning at startup.
+kind: Dashboard
+metadata:
+  name: swagshop-runtime-network
+  project: swagshop
+spec:
+  display:
+    name: 'Swag shop: runtimes and network'
+    description: Experimental runtime metrics and network flow metrics from OBI.
+  duration: 15m
+  refreshInterval: 15s
+  variables: []
+  panels:
+    go_goroutines:
+      kind: Panel
+      spec:
+        display:
+          name: Go goroutines
+          description: go.goroutine.count for the gateway.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: decimal
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (job) (go_goroutine_count)
+                seriesNameFormat: '{{job}}'
+    go_mem:
+      kind: Panel
+      spec:
+        display:
+          name: Go memory in use
+          description: go.memory.used.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: bytes
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (job) (go_memory_used_bytes)
+                seriesNameFormat: '{{job}}'
+    jvm_mem:
+      kind: Panel
+      spec:
+        display:
+          name: JVM memory in use
+          description: jvm.memory.used for checkout, by memory type.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: bytes
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (job, jvm_memory_type) (jvm_memory_used_bytes)
+                seriesNameFormat: '{{job}} {{jvm_memory_type}}'
+    node_elu:
+      kind: Panel
+      spec:
+        display:
+          name: Node.js event loop utilization
+          description: nodejs.eventloop.utilization for the cart.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: percent-decimal
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: avg by (job) (nodejs_eventloop_utilization_ratio)
+                seriesNameFormat: '{{job}}'
+    node_delay:
+      kind: Panel
+      spec:
+        display:
+          name: Node.js event loop delay p99
+          description: nodejs.eventloop.delay.p99.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max by (job) (nodejs_eventloop_delay_p99_seconds)
+                seriesNameFormat: '{{job}}'
+    rt_note:
+      kind: Panel
+      spec:
+        display:
+          name: About runtime metrics
+        plugin:
+          kind: Markdown
+          spec:
+            text: |-
+              Runtime metrics are **experimental** in OBI v1 and are turned on with the `application_runtime` metrics feature. OBI reads them from outside the process: Go from the runtime's own structures, Java through the attach API, Node.js through the inspector.
+
+              Go metrics appear after the first GC cycle, so give the gateway a minute under load.
+    flow_bytes:
+      kind: Panel
+      spec:
+        display:
+          name: Network traffic between endpoints (top 10)
+          description: obi.network.flow.bytes, captured on the VM's interfaces with a socket filter.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: bytes/sec
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: topk(10, sum by (src_address, dst_address) (rate(obi_network_flow_bytes_total[$__rate_interval])))
+                seriesNameFormat: '{{src_address}} → {{dst_address}}'
+    tcp_rtt:
+      kind: Panel
+      spec:
+        display:
+          name: TCP round-trip time p95
+          description: obi.stat.tcp.rtt.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: histogram_quantile(0.95, sum by (le) (rate(obi_stat_tcp_rtt_seconds_bucket[$__rate_interval])))
+                seriesNameFormat: p95 RTT
+    tcp_bad:
+      kind: Panel
+      spec:
+        display:
+          name: TCP retransmits and failed connections
+          description: obi.stat.tcp.retransmits and obi.stat.tcp.failed.connections.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+              mode: list
+            yAxis:
+              format:
+                unit: counts/sec
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(obi_stat_tcp_retransmits_total[$__rate_interval]))
+                seriesNameFormat: retransmits
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(obi_stat_tcp_failed_connections_total[$__rate_interval]))
+                seriesNameFormat: failed connections
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: Runtimes
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/rt_note'
+      - x: 8
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/go_goroutines'
+      - x: 16
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/go_mem'
+      - x: 0
+        y: 8
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/jvm_mem'
+      - x: 8
+        y: 8
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/node_elu'
+      - x: 16
+        y: 8
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/node_delay'
+  - kind: Grid
+    spec:
+      display:
+        title: Network
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/flow_bytes'
+      - x: 12
+        y: 0
+        width: 6
+        height: 8
+        content:
+          $ref: '#/spec/panels/tcp_rtt'
+      - x: 18
+        y: 0
+        width: 6
+        height: 8
+        content:
+          $ref: '#/spec/panels/tcp_bad'
