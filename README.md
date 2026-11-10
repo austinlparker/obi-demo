@@ -134,7 +134,8 @@ Everything Perses loads lives in `config/perses/provisioning/`:
 - `datasources.yaml`: Prometheus and Jaeger, proxied by the Perses server.
 - `dashboard-services.yaml`: golden signals per service, latency and status by
   route, outgoing HTTP/gRPC, database and NATS calls, the service graph, and a
-  table of recent traces from Jaeger.
+  table of recent traces from Jaeger. Clicking a trace name opens it in the
+  Jaeger UI at localhost:16686.
 - `dashboard-runtime-network.yaml`: Go, JVM and Node.js runtime metrics, network
   flows and TCP stats.
 
