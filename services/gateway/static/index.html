@@ -5,62 +5,400 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Swag Shop</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1b1b1f; }
-    h1 { margin-bottom: .25rem; }
-    p.sub { color: #5c5c66; margin-top: 0; }
-    ul { list-style: none; padding: 0; }
-    li { display: flex; justify-content: space-between; align-items: center; padding: .6rem 0; border-bottom: 1px solid #e4e4ea; }
-    button { font: inherit; padding: .35rem .8rem; border-radius: 6px; border: 1px solid #3d5afe; background: #3d5afe; color: #fff; cursor: pointer; }
-    button.secondary { background: #fff; color: #3d5afe; }
-    #status { margin-top: 1rem; min-height: 1.5rem; }
+    :root {
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --surface-2: #eef0f7;
+      --text: #15161c;
+      --muted: #5f6275;
+      --border: #e1e3ee;
+      --accent: #4f46e5;
+      --accent-ink: #ffffff;
+      --accent-soft: #eceafe;
+      --good: #12805c;
+      --warn: #a15c00;
+      --bad: #c0262d;
+      --shadow: 0 1px 2px rgba(20, 22, 40, .06), 0 8px 24px rgba(20, 22, 40, .06);
+      --radius: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1016;
+        --surface: #181a23;
+        --surface-2: #22242f;
+        --text: #eceef6;
+        --muted: #9a9db2;
+        --border: #2b2e3b;
+        --accent: #8b85ff;
+        --accent-ink: #0f1016;
+        --accent-soft: #26244a;
+        --good: #45c995;
+        --warn: #f0a640;
+        --bad: #ff6b70;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; cursor: pointer; }
+    a { color: var(--accent); }
+
+    /* ---- header ---- */
+    header {
+      position: sticky; top: 0; z-index: 5;
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .bar { max-width: 1180px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
+    .brand .mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; color: var(--accent-ink); }
+    .brand small { font-weight: 500; color: var(--muted); font-size: 13px; }
+    .spacer { flex: 1; }
+    .cart-btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+      border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    }
+    .badge { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 700; display: inline-grid; place-items: center; }
+
+    /* ---- layout ---- */
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+    .hero { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+    .hero h1 { margin: 0 0 4px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.02em; }
+    .hero p { margin: 0; color: var(--muted); max-width: 560px; }
+    .stack { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+    .chip b { color: var(--text); font-weight: 600; }
+
+    /* ---- products ---- */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+    .art { aspect-ratio: 4 / 3; display: grid; place-items: center; }
+    .art svg { width: 46%; height: auto; color: #fff; filter: drop-shadow(0 6px 10px rgba(0,0,0,.18)); }
+    .info { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .info h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .price { font-weight: 700; font-size: 16px; }
+    .stock { font-size: 12px; color: var(--muted); }
+    .stock.low { color: var(--warn); }
+    .add {
+      margin-top: auto; width: 100%; padding: 9px 12px; border-radius: 10px; border: 0;
+      background: var(--accent); color: var(--accent-ink); font-weight: 600;
+      transition: transform .06s ease, opacity .15s ease;
+    }
+    .add:active { transform: scale(.98); }
+    .add[disabled] { opacity: .6; cursor: progress; }
+    .skeleton .art { background: var(--surface-2); }
+    .skeleton .line { height: 12px; border-radius: 6px; background: var(--surface-2); }
+
+    /* ---- cart ---- */
+    aside { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 16px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
+    .panel h2 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .panel h2 span { font-size: 12px; font-weight: 500; color: var(--muted); }
+    .lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+    .line-item { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 10px; }
+    .thumb { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; }
+    .thumb svg { width: 60%; color: #fff; }
+    .line-item .name { font-size: 14px; }
+    .line-item .qty { font-size: 12px; color: var(--muted); }
+    .line-item .amt { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .empty { color: var(--muted); font-size: 14px; padding: 8px 0 4px; }
+    .total { display: flex; justify-content: space-between; border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; font-weight: 700; }
+    .checkout {
+      margin-top: 14px; width: 100%; padding: 11px 12px; border-radius: 10px; border: 0;
+      background: var(--text); color: var(--bg); font-weight: 700;
+    }
+    .checkout[disabled] { opacity: .45; cursor: not-allowed; }
+
+    /* ---- demo controls ---- */
+    details.panel summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+    details.panel summary::-webkit-details-marker { display: none; }
+    details.panel summary::after { content: "+"; color: var(--muted); font-weight: 400; font-size: 18px; }
+    details[open].panel summary::after { content: "–"; }
+    .controls { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+    .toggle small { display: block; color: var(--muted); font-size: 12px; }
+    .switch { position: relative; width: 40px; height: 24px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); transition: background .15s; }
+    .switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+    .switch input:checked + span { background: var(--bad); border-color: var(--bad); }
+    .switch input:checked + span::after { transform: translateX(16px); }
+    .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .links a { font-size: 13px; text-decoration: none; padding: 5px 10px; border-radius: 8px; background: var(--accent-soft); }
+    .timing { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    /* ---- toasts ---- */
+    #toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 20; max-width: min(380px, calc(100vw - 32px)); }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+      border-radius: 10px; padding: 10px 14px; box-shadow: var(--shadow); font-size: 14px;
+      animation: in .18s ease-out;
+    }
+    .toast.good { border-left-color: var(--good); }
+    .toast.bad { border-left-color: var(--bad); }
+    .toast small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    footer { max-width: 1180px; margin: 0 auto; padding: 0 20px 32px; color: var(--muted); font-size: 13px; }
   </style>
 </head>
 <body>
-  <h1>Swag Shop</h1>
-  <p class="sub">Five services, five languages, zero instrumentation code. OBI does the rest.</p>
-  <ul id="products"></ul>
-  <button id="checkout">Check out</button>
-  <button id="view" class="secondary">View cart</button>
-  <div id="status"></div>
+  <header>
+    <div class="bar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
+        </div>
+        <div>Swag Shop <small>KubeCon NA 2026</small></div>
+      </div>
+      <div class="spacer"></div>
+      <button class="cart-btn" id="cartJump" type="button" aria-label="Go to cart">
+        Cart <span class="badge" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Conference swag, observed from the kernel</h1>
+        <p>Five services in five languages, with no OpenTelemetry SDKs or agents. Every trace and metric comes from OBI.</p>
+      </div>
+      <div class="stack" aria-label="Services">
+        <span class="chip"><b>gateway</b> Go</span>
+        <span class="chip"><b>catalog</b> Python</span>
+        <span class="chip"><b>cart</b> Node.js</span>
+        <span class="chip"><b>checkout</b> Java</span>
+        <span class="chip"><b>notifier</b> Rust</span>
+      </div>
+    </section>
+
+    <section class="grid" id="products" aria-label="Products" aria-busy="true"></section>
+
+    <aside>
+      <div class="panel" id="cart">
+        <h2>Your cart <span id="userLabel"></span></h2>
+        <ul class="lines" id="lines"></ul>
+        <div class="total"><span>Total</span><span id="total">$0.00</span></div>
+        <button class="checkout" id="checkout" type="button" disabled>Check out</button>
+        <div class="timing" id="timing" aria-live="polite"></div>
+      </div>
+
+      <details class="panel" id="demo">
+        <summary>Demo controls</summary>
+        <div class="controls">
+          <label class="toggle">
+            <span>Slow catalog<small>Adds about 400 ms to catalog requests</small></span>
+            <span class="switch"><input type="checkbox" id="chaosLatency"><span></span></span>
+          </label>
+          <label class="toggle">
+            <span>Flaky cart<small>Fails 20% of cart requests</small></span>
+            <span class="switch"><input type="checkbox" id="chaosErrors"><span></span></span>
+          </label>
+          <div class="links" id="links"></div>
+        </div>
+      </details>
+    </aside>
+  </main>
+
+  <footer>Checkout declines about 3% of cards on purpose, so you'll see the odd gRPC error in Jaeger.</footer>
+
+  <div id="toasts" aria-live="polite"></div>
+
   <script>
-    const user = 'browser-' + Math.random().toString(36).slice(2, 8);
-    const status = (msg) => { document.getElementById('status').textContent = msg; };
-    const money = (c) => '$' + (c / 100).toFixed(2);
+    // ---- helpers -----------------------------------------------------------
+    const $ = (id) => document.getElementById(id);
+    const money = (c) => (c / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+    function userId() {
+      let id = null;
+      try { id = localStorage.getItem('swagshop-user'); } catch (_) {}
+      if (!id) {
+        id = 'web-' + Math.random().toString(36).slice(2, 7);
+        try { localStorage.setItem('swagshop-user', id); } catch (_) {}
+      }
+      return id;
+    }
+    const user = userId();
+    $('userLabel').textContent = user;
+
+    function toast(msg, kind = '', detail = '') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + kind;
+      el.textContent = msg;
+      if (detail) { const s = document.createElement('small'); s.textContent = detail; el.appendChild(s); }
+      $('toasts').appendChild(el);
+      setTimeout(() => el.remove(), 4200);
+    }
 
     async function api(method, path, body) {
-      const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || res.statusText);
+      const t0 = performance.now();
+      const res = await fetch(path, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const ms = Math.round(performance.now() - t0);
+      $('timing').textContent = `${method} ${path} · ${res.status} in ${ms} ms`;
+      let data = null;
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok) {
+        const err = new Error((data && data.error) || res.statusText);
+        err.status = res.status;
+        throw err;
+      }
       return data;
     }
 
-    async function load() {
-      const products = await api('GET', '/api/products');
-      const list = document.getElementById('products');
-      list.innerHTML = '';
+    // ---- product art (simple inline icons, tinted per product) -------------
+    const ART = {
+      'otel-hoodie':   { hue: 250, path: '<path d="M8 3l4 2 4-2 5 4-2 4-2-1v11H7V10l-2 1-2-4 5-4z"/><path d="M10 3.8c0 1.5.9 2.7 2 2.7s2-1.2 2-2.7"/>' },
+      'obi-sticker':   { hue: 42,  path: '<ellipse cx="12" cy="13" rx="5" ry="6"/><path d="M7.5 11h9M7.3 14h9.4M8.5 17h7"/><path d="M9 7.5C7 4 4 4.5 4 7s3 3 5 2M15 7.5C17 4 20 4.5 20 7s-3 3-5 2"/>' },
+      'ebpf-mug':      { hue: 190, path: '<path d="M5 6h11v11a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V6z"/><path d="M16 9h2a2 2 0 0 1 0 4h-2"/><path d="M8 2.5c0 1 1 1 1 2M11.5 2.5c0 1 1 1 1 2"/>' },
+      'collector-cap': { hue: 150, path: '<path d="M3 15c0-5 4-9 9-9s9 4 9 9H3z"/><path d="M3 15h12c2 0 4 1 6 2"/><circle cx="12" cy="6" r="1"/>' },
+      'trace-socks':   { hue: 330, path: '<path d="M9 2h6v9l-1 3c-1 3-3 6-7 6a3 3 0 0 1-1-6l3-2V2z"/><path d="M9 6h6"/>' },
+      'kubecon-tote':  { hue: 20,  path: '<path d="M4 8h16l-1 13H5L4 8z"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/>' },
+    };
+    function art(sku, cls) {
+      const a = ART[sku] || { hue: (sku.length * 47) % 360, path: '<rect x="5" y="5" width="14" height="14" rx="3"/>' };
+      const bg = `linear-gradient(135deg, hsl(${a.hue} 75% 58%), hsl(${(a.hue + 35) % 360} 70% 46%))`;
+      return `<div class="${cls}" style="background:${bg}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${a.path}</svg></div>`;
+    }
+
+    // ---- state -------------------------------------------------------------
+    let products = [];
+    let cart = [];
+    const bySku = () => Object.fromEntries(products.map((p) => [p.sku, p]));
+
+    function renderSkeleton() {
+      $('products').innerHTML = Array.from({ length: 6 }, () =>
+        '<div class="card skeleton"><div class="art"></div><div class="info"><div class="line" style="width:70%"></div><div class="line" style="width:40%"></div></div></div>').join('');
+    }
+
+    function renderProducts() {
+      const grid = $('products');
+      grid.innerHTML = '';
       for (const p of products) {
+        const card = document.createElement('article');
+        card.className = 'card';
+        const low = p.stock < 10;
+        card.innerHTML = `${art(p.sku, 'art')}
+          <div class="info">
+            <h3></h3>
+            <div class="row"><span class="price">${money(p.price_cents)}</span>
+              <span class="stock ${low ? 'low' : ''}">${low ? 'Only ' + p.stock + ' left' : p.stock + ' in stock'}</span></div>
+            <button class="add" type="button">Add to cart</button>
+          </div>`;
+        card.querySelector('h3').textContent = p.name;
+        const btn = card.querySelector('.add');
+        btn.onclick = () => addToCart(p, btn);
+        grid.appendChild(card);
+      }
+      grid.setAttribute('aria-busy', 'false');
+    }
+
+    function renderCart() {
+      const lines = $('lines');
+      const map = bySku();
+      lines.innerHTML = '';
+      let total = 0, count = 0;
+      for (const item of cart) {
+        const p = map[item.sku] || { name: item.sku, price_cents: 0 };
+        const amt = p.price_cents * item.quantity;
+        total += amt; count += item.quantity;
         const li = document.createElement('li');
-        li.innerHTML = `<span>${p.name} <small>(${p.stock} left)</small></span>`;
-        const btn = document.createElement('button');
-        btn.textContent = 'Add ' + money(p.price_cents);
-        btn.onclick = async () => {
-          try { await api('POST', `/api/cart/${user}/items`, { sku: p.sku, quantity: 1 }); status(`Added ${p.name}`); }
-          catch (e) { status('Error: ' + e.message); }
-        };
-        li.appendChild(btn);
-        list.appendChild(li);
+        li.className = 'line-item';
+        li.innerHTML = `${art(item.sku, 'thumb')}<div><div class="name"></div><div class="qty">Qty ${item.quantity} · ${money(p.price_cents)} each</div></div><div class="amt">${money(amt)}</div>`;
+        li.querySelector('.name').textContent = p.name;
+        lines.appendChild(li);
+      }
+      if (!cart.length) lines.innerHTML = '<li class="empty">Nothing here yet. The hoodie is a good start.</li>';
+      $('total').textContent = money(total);
+      $('cartCount').textContent = count;
+      $('checkout').disabled = !cart.length;
+    }
+
+    // ---- actions -----------------------------------------------------------
+    async function loadProducts() {
+      products = await api('GET', '/api/products');
+      renderProducts();
+    }
+
+    async function loadCart() {
+      cart = await api('GET', `/api/cart/${user}`);
+      renderCart();
+    }
+
+    async function addToCart(p, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Adding…';
+      try {
+        cart = await api('POST', `/api/cart/${user}/items`, { sku: p.sku, quantity: 1 });
+        renderCart();
+        toast(`Added ${p.name}`, 'good');
+      } catch (e) {
+        toast(`Couldn't add ${p.name}`, 'bad', e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add to cart';
       }
     }
 
-    document.getElementById('checkout').onclick = async () => {
-      try { const o = await api('POST', `/api/checkout/${user}`); status(`Order ${o.order_id} placed, ${money(o.total_cents)}`); load(); }
-      catch (e) { status('Error: ' + e.message); }
+    $('checkout').onclick = async () => {
+      const btn = $('checkout');
+      btn.disabled = true;
+      btn.textContent = 'Placing order…';
+      try {
+        const o = await api('POST', `/api/checkout/${user}`);
+        toast(`Order ${o.order_id} placed`, 'good', `${money(o.total_cents)} · the notifier updates stock over NATS`);
+        cart = [];
+        renderCart();
+        loadProducts().catch(() => {});
+      } catch (e) {
+        if (e.status === 402) toast('Card declined', 'bad', 'Checkout declines a few cards on purpose. Try again, or find this one in Jaeger.');
+        else toast('Checkout failed', 'bad', e.message);
+      } finally {
+        btn.textContent = 'Check out';
+        btn.disabled = !cart.length;
+      }
     };
-    document.getElementById('view').onclick = async () => {
-      try { const items = await api('GET', `/api/cart/${user}`); status(items.length ? items.map(i => `${i.quantity} x ${i.sku}`).join(', ') : 'Cart is empty'); }
-      catch (e) { status('Error: ' + e.message); }
-    };
-    load().catch(e => status('Error: ' + e.message));
+
+    async function setChaos(service, setting, label, input) {
+      try {
+        await api('POST', `/admin/chaos/${service}`, setting);
+        toast(input.checked ? `${label} on` : `${label} off`, input.checked ? 'bad' : 'good',
+          input.checked ? 'Watch the Perses dashboard react.' : '');
+      } catch (e) {
+        input.checked = !input.checked;
+        toast(`Couldn't change ${label.toLowerCase()}`, 'bad', e.message);
+      }
+    }
+    $('chaosLatency').onchange = (e) => setChaos('catalog', { latency_ms: e.target.checked ? 400 : 0 }, 'Slow catalog', e.target);
+    $('chaosErrors').onchange = (e) => setChaos('cart', { error_rate: e.target.checked ? 0.2 : 0 }, 'Flaky cart', e.target);
+
+    $('cartJump').onclick = () => $('cart').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Links to the observability UIs, on whatever host this page was opened from.
+    const host = location.hostname || 'localhost';
+    $('links').innerHTML = [
+      ['Perses', 8090], ['Jaeger', 16686], ['Prometheus', 9090],
+    ].map(([name, port]) => `<a href="http://${host}:${port}" target="_blank" rel="noopener">${name} ↗</a>`).join('');
+
+    // ---- start -------------------------------------------------------------
+    renderSkeleton();
+    renderCart();
+    loadProducts().catch((e) => toast('Catalog is unavailable', 'bad', e.message));
+    loadCart().catch(() => {});
   </script>
 </body>
 </html>
