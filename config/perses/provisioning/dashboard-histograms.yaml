@@ -91,8 +91,9 @@ spec:
         plugin:
           kind: HistogramChart
           spec:
+            # format applies to the count axis; bucket bounds on x are always raw seconds.
             format:
-              unit: seconds
+              unit: decimal
             logBase: 2
         queries:
         - kind: TimeSeriesQuery

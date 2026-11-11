@@ -6,10 +6,16 @@ x-app-defaults: &app
   restart: unless-stopped
   networks: [shop]
 
+# The shop's services get fixed addresses so OBI can name the other end of a
+# connection. OBI only sees peer IPs, and with no Kubernetes to ask it does a
+# reverse lookup, which the obi service's extra_hosts answers from these same
+# addresses. Without this the service graph shows "incoming" and "outgoing".
 services:
   # --- the shop --------------------------------------------------------------
   gateway:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_gateway 172.30.0.10 }
     build: ./services/gateway
     environment:
       OTEL_SERVICE_NAME: gateway
@@ -22,6 +28,8 @@ services:
 
   catalog:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_catalog 172.30.0.11 }
     build: ./services/catalog
     environment:
       OTEL_SERVICE_NAME: catalog
@@ -32,6 +40,8 @@ services:
 
   cart:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_cart 172.30.0.12 }
     build: ./services/cart
     environment:
       OTEL_SERVICE_NAME: cart
@@ -40,6 +50,8 @@ services:
 
   checkout:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_checkout 172.30.0.13 }
     build:
       context: .
       dockerfile: services/checkout/Dockerfile
@@ -51,6 +63,8 @@ services:
 
   notifier:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_notifier 172.30.0.14 }
     build: ./services/notifier
     environment:
       OTEL_SERVICE_NAME: notifier
@@ -60,6 +74,8 @@ services:
 
   postgres:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_postgres 172.30.0.20 }
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: shop
@@ -75,14 +91,20 @@ services:
 
   redis:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_redis 172.30.0.21 }
     image: redis:8.8-alpine
 
   nats:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_nats 172.30.0.22 }
     image: nats:2.15-alpine
 
   loadgen:
     <<: *app
+    networks:
+      shop: { ipv4_address: &ip_loadgen 172.30.0.30 }
     image: grafana/k6:2.3.0
     command: ["run", "--quiet", "/scripts/shop.js"]
     environment:
@@ -104,6 +126,18 @@ services:
     # Simplest option for a demo. config/obi/obi.yaml lists the narrower
     # capability set if you want to drop privileged.
     privileged: true
+    # Answers OBI's reverse lookups of peer IPs (enrich.service_name.sources: [dns]
+    # in config/obi/obi.yaml). The addresses come from the services above.
+    extra_hosts:
+      gateway: *ip_gateway
+      catalog: *ip_catalog
+      cart: *ip_cart
+      checkout: *ip_checkout
+      notifier: *ip_notifier
+      postgres: *ip_postgres
+      redis: *ip_redis
+      nats: *ip_nats
+      loadgen: *ip_loadgen
     volumes:
       - ./config/obi/obi.yaml:/etc/obi/obi.yaml:ro
       - /sys/fs/cgroup:/sys/fs/cgroup          # new sockets, for context propagation
@@ -161,4 +195,10 @@ services:
     depends_on: [prometheus, jaeger]
 
 networks:
-  shop: {}
+  shop:
+    ipam:
+      config:
+        # Fixed addresses come from the lower half; containers without one are
+        # allocated from ip_range, so they can't take a reserved address first.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25

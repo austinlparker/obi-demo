@@ -746,6 +746,7 @@ dependencies = [
  "async-nats",
  "axum",
  "futures",
+ "rand 0.10.3",
  "reqwest",
  "serde",
  "serde_json",

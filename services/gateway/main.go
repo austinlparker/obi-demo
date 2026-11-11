@@ -224,6 +224,9 @@ func (s *server) placeOrder(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, code, err)
 		return
 	}
+	// OBI records this header on the span (see config/obi/obi.yaml), which makes
+	// the order ID a searchable span attribute without an SDK.
+	w.Header().Set("X-Order-Id", resp.OrderId)
 	writeJSON(w, http.StatusOK, map[string]any{"order_id": resp.OrderId, "total_cents": resp.TotalCents})
 }
 

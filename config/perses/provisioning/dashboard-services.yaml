@@ -78,7 +78,7 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: ((sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[$__rate_interval])) or vector(0)) + (sum(rate(rpc_server_call_duration_seconds_count{rpc_grpc_status_code!="0"}[$__rate_interval]))
+                query: ((sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[$__rate_interval])) or vector(0)) + (sum(rate(rpc_server_call_duration_seconds_count{rpc_response_status_code!~"OK|"}[$__rate_interval]))
                   or vector(0))) / ((sum(rate(http_server_request_duration_seconds_count[$__rate_interval])) or vector(0)) + (sum(rate(rpc_server_call_duration_seconds_count[$__rate_interval])) or vector(0)))
     edge_p95:
       kind: Panel
@@ -144,7 +144,7 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: (sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[$__rate_interval])) or sum by (job) (rate(rpc_server_call_duration_seconds_count{rpc_grpc_status_code!="0"}[$__rate_interval])))
+                query: (sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[$__rate_interval])) or sum by (job) (rate(rpc_server_call_duration_seconds_count{rpc_response_status_code!~"OK|"}[$__rate_interval])))
                   / (sum by (job) (rate(http_server_request_duration_seconds_count[$__rate_interval])) or sum by (job) (rate(rpc_server_call_duration_seconds_count[$__rate_interval])))
                 seriesNameFormat: '{{job}}'
     latency:
@@ -231,8 +231,8 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum by (rpc_method, rpc_grpc_status_code) (rate(rpc_server_call_duration_seconds_count{job="$service"}[$__rate_interval]))
-                seriesNameFormat: '{{rpc_method}} status {{rpc_grpc_status_code}}'
+                query: sum by (rpc_method, rpc_response_status_code) (rate(rpc_server_call_duration_seconds_count{job="$service"}[$__rate_interval]))
+                seriesNameFormat: '{{rpc_method}} {{rpc_response_status_code}}'
     http_client:
       kind: Panel
       spec:

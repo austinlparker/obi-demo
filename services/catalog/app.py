@@ -17,6 +17,11 @@ pool = ConnectionPool(
     os.environ.get("DATABASE_URL", "postgresql://shop:shop@postgres:5432/shop"),
     min_size=1,
     max_size=10,
+    # OBI v1 doesn't trace Postgres connections that were already open when it
+    # started, so after an OBI restart (or if OBI comes up after the catalog)
+    # the SQL spans vanish until the pool reconnects. The default lifetime is
+    # an hour; a minute keeps that gap short.
+    max_lifetime=60,
     open=False,
 )
 

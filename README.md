@@ -31,10 +31,18 @@ It runs on a Mac inside one Lima Linux VM.
 
 - **Traces across five runtimes with no SDKs.** OBI propagates W3C `traceparent`
   itself (`context_propagation: all`): network-level for HTTP/1 and plaintext
-  HTTP/2 and gRPC, plus Go library-level propagation in the gateway.
+  HTTP/2 and gRPC, plus Go library-level propagation in the gateway. Across
+  NATS, where OBI can't propagate, checkout and the notifier forward the
+  `traceparent` header themselves, with no OpenTelemetry library.
 - **Protocol parsing.** PostgreSQL (catalog), Redis (cart), gRPC (gateway to
-  checkout) and NATS (checkout to notifier) all show up as client spans and
-  metrics, parsed from the wire.
+  checkout) and NATS publishes (checkout) all show up as client spans and
+  metrics, parsed from the wire. The notifier's NATS deliveries don't: see
+  [Troubleshooting](#troubleshooting).
+- **Header and body capture.** OBI records selected HTTP headers and the small
+  POST bodies as span attributes, with cookies obfuscated. The gateway sets an
+  `X-Order-Id` response header on checkout, so in Jaeger you can search
+  `http.response.header.x-order-id=ord-…` to find any order's trace. The
+  rules are in `config/obi/obi.yaml`.
 - **Route discovery.** FastAPI routes come from OBI's framework route
   discovery. The other services use the route patterns in
   `config/obi/obi.yaml`, with heuristic grouping for anything unmatched.
@@ -179,6 +187,7 @@ config/
   postgres/   Product seed data
 loadgen/      k6 script
 lima/         Lima VM definition
+deck/         Companion talk for demoing this repo live (decker; `cd deck && go run .`)
 ```
 
 ## Pinned versions
@@ -207,9 +216,49 @@ Perses, any newer Jaeger v2 works for the rest of the demo.
   Dockerfile keeps symbols.
 - **Odd service names.** Each service sets `OTEL_SERVICE_NAME`; without it OBI
   falls back to the executable name (`python3.14`, `node`, `java`...).
-- **Notifier traces are separate from checkout traces.** OBI's docs don't
-  promise trace propagation across NATS, so the notifier's work may start a new
-  trace. The NATS publish and process spans and metrics are there either way.
+- **The notifier has no NATS spans, only its HTTP calls to the catalog.** OBI
+  v1 parses NATS out of its generic TCP tracker, which pairs something the
+  process sends with the reply that comes back. A push subscriber never sends
+  anything before a `MSG` arrives, so deliveries are never emitted. Only
+  consumers that publish and receive on the same connection (request/reply)
+  get `process` spans.
+- **NATS publishes start their own traces.** jnats writes to the socket from a
+  dedicated writer thread, not the gRPC handler thread, so OBI can't parent the
+  `publish orders.placed` span under `PlaceOrder`.
+- **The notifier's catalog calls are extra roots in the order's trace.** OBI v1
+  can't carry trace context through the NATS broker, so the services forward it
+  by hand: checkout copies the incoming `traceparent` into a NATS message
+  header, and the notifier sends it on to the catalog with a new span ID. OBI
+  adopts a `traceparent` it finds on an outgoing request instead of injecting
+  its own, so the notifier and catalog spans join the order's trace. The
+  notifier has no consumer span to hang them under, so they show up as extra
+  root spans next to the gateway's.
+- **NATS publish spans need the flush.** Core NATS `PUB` gets no reply, so
+  without the `flush()` after each publish in checkout, OBI folds every publish
+  into one open request until a keepalive `PONG` closes it, and records about
+  one publish every few minutes. The `network.capture.buffer_size` setting in
+  `config/obi/obi.yaml` matters too: at the default, most order messages are
+  truncated and dropped.
+- **Header capture rules match nothing.** In a Config v2 file, write header
+  `patterns` in lowercase (`content-type`, not `Content-Type`). OBI v1.0.0
+  lowercases the header name for `case_sensitive: false` but not the pattern,
+  so mixed-case patterns never match. That includes `obfuscate` rules.
+- **The service graph shows `incoming` or `outgoing`.** Those are OBI's names
+  for peers it couldn't identify. OBI only sees the peer's IP, and outside
+  Kubernetes it names it with a reverse lookup, which the `extra_hosts` on the
+  `obi` service answers. So the shop's services have fixed addresses in
+  `docker-compose.yaml`. If you add a service, give it an `ipv4_address` and an
+  `extra_hosts` entry. Browser traffic comes in through the published port from
+  the Docker bridge, so it stays `incoming`.
+- **Telemetry is wrong for about a minute after restarting OBI.** OBI v1 can't
+  fully read connections that were already open when it started. It doesn't
+  trace Postgres on them at all. On gRPC it can't decode the HTTP/2 headers,
+  which are compressed against a table built up since the connection opened,
+  so `rpc.method` is `_OTHER` and the span is just `grpc`. Redis is unaffected.
+  The shop recycles both kinds of connection every minute: the catalog's pool
+  (`max_lifetime` in `services/catalog/app.py`) and checkout's gRPC server
+  (`maxConnectionAge` in `CheckoutServer.java`). So the data recovers within
+  about a minute.
 - **Runtime metrics are missing.** They're experimental in v1. Go runtime
   metrics only appear after the first GC cycle.
 

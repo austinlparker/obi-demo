@@ -34,6 +34,15 @@ extensions:
   obi:
     version: "2.0"
 
+    # How OBI names the other end of a connection (service graph client/server,
+    # server.address). The default source is Kubernetes. Here, "dns" means a
+    # reverse lookup of the peer IP, answered by the extra_hosts entries on the
+    # obi service in docker-compose.yaml. Peers it can't name show up as
+    # "incoming" or "outgoing".
+    enrich:
+      service_name:
+        sources: [dns]
+
     # Which processes to instrument. Only the swag shop's own services are
     # selected, by the port each one listens on. Everything else on the VM
     # (Postgres, Redis, NATS, the Collector, Jaeger, Prometheus, Perses, k6)
@@ -98,10 +107,65 @@ extensions:
                 - /cart/{user}/items
                 - /admin/chaos
 
+          # Header and body capture, as span attributes: http.request.header.<name>,
+          # http.response.header.<name>, http.request.body.content and
+          # http.response.body.content. Nothing is captured unless a rule says so.
+          # Headers use the first matching rule; for bodies, exclude beats
+          # obfuscate beats include. Spans only: the Collector's spanmetrics
+          # dimensions are fixed, so none of this reaches metric labels.
+          buffer_size: 8192          # default capture cuts off after the first few headers
+          payload_extraction:
+            enabled: [enrichment]
+            enrichment:
+              policy:
+                default_action:
+                  headers: exclude
+                  body: exclude
+                obfuscation_string: "***"
+              rules:
+                # Header patterns must be lowercase. With case_sensitive: false,
+                # OBI v1.0.0 lowercases the header name but, when the config is
+                # Config v2, not the pattern, so "Content-Type" never matches.
+                #
+                # Browsers send every localhost cookie to localhost:8080,
+                # including ones from other local apps. Record that one was
+                # sent, never its value.
+                - action: obfuscate
+                  type: headers
+                  scope: all
+                  match:
+                    patterns: [cookie, set-cookie, authorization]
+                    case_sensitive: false
+                # X-Order-Id is set by the gateway on checkout responses, so an
+                # order ID from the UI or the notifier's log finds its trace.
+                - action: include
+                  type: headers
+                  scope: all
+                  match:
+                    patterns: [user-agent, content-type, x-order-id]
+                    case_sensitive: false
+                # The small write payloads. GET responses (the product list) stay out.
+                - action: include
+                  type: body
+                  scope: all
+                  match:
+                    methods: [POST]
+                    url_path_patterns:
+                      - /api/cart/*/items
+                      - /cart/*/items
+                      - /api/checkout/*
+                      - /products/*/sold
+                      - /admin/chaos*
+
       # Network flow and TCP stats metrics, captured on the VM's interfaces.
       network:
         capture:
           enabled: true
+          # Despite living here, this is the payload capture size for protocols
+          # OBI parses from generic TCP, NATS included (ebpf.buffer_sizes.tcp in
+          # v1). The default 0 leaves only 256 request / 128 response bytes, which
+          # truncates most order messages, and the NATS parser drops truncated frames.
+          buffer_size: 4096
         stats:
           enabled: true
 
